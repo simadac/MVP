@@ -1,0 +1,14 @@
+# ============================================================
+# SIMAD — Variáveis de ambiente do backend
+# ============================================================
+# Altere estes valores quando o banco definitivo estiver pronto.
+# NUNCA suba este arquivo para o GitHub (.gitignore deve excluí-lo).
+
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=simad
+DB_PORT=3306
+
+# Chave secreta para futuras sessões/JWT (pode ser qualquer string longa)
+SECRET_KEY=simad_chave_secreta_2024

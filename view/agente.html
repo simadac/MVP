@@ -2140,32 +2140,105 @@
             openModal('updateOccurrenceModal');
         }
         
+        // URL base da API Flask — altere se o servidor rodar em outra porta
+        const API_URL = 'http://localhost:5000/api';
+
+        // ============================================
+        // CONSULTA GERAL DE OCORRÊNCIAS — API
+        // ============================================
+        async function carregarTodasOcorrencias() {
+            // Lê filtros ativos da tela
+            const filtroStatus = document.getElementById('statusFilter')?.value  || '';
+            const filtroBairro = document.getElementById('bairroFilter')?.value  || '';
+
+            const params = new URLSearchParams();
+            if (filtroStatus && filtroStatus !== 'todos') params.append('status', filtroStatus);
+            if (filtroBairro && filtroBairro !== 'todos') params.append('bairro', filtroBairro);
+
+            try {
+                const resposta = await fetch(`${API_URL}/ocorrencias?${params.toString()}`);
+                const dados    = await resposta.json();
+                if (!resposta.ok) throw new Error(dados.erro || 'Erro ao buscar ocorrências');
+
+                // Mapeia campos da API para o formato usado pelas funções de render
+                ocorrencias = dados.map(o => ({
+                    id:               o.id,
+                    titulo:           o.titulo,
+                    descricao:        o.descricao,
+                    endereco:         o.endereco    || '',
+                    bairro:           o.bairro      || '',
+                    status:           o.status,
+                    urgencia:         o.urgencia    || 'medio',
+                    data:             o.data_criacao,
+                    moradorId:        o.id_morador,
+                    moradorNome:      o.morador_nome || 'Não informado',
+                    agenteStatus:     o.observacao_agente   || null,
+                    comentarioInterno: o.comentario_interno || null,
+                    equipe:           o.equipe   || null,
+                    lat:              o.latitude  || -23.207,
+                    lng:              o.longitude || -46.77,
+                }));
+
+                saveData(); // cópia local como fallback
+            } catch (erro) {
+                console.error('Erro ao carregar ocorrências:', erro);
+                showToast('Não foi possível carregar do servidor. Usando dados locais.', 'warning');
+                loadSavedData();
+            }
+        }
+
+        // ============================================
+        // ATUALIZAÇÃO DE STATUS PELO AGENTE — API
+        // ============================================
         function confirmUpdateOccurrence() {
-            showConfirmDialog('Deseja realmente atualizar esta ocorrência? O morador será notificado.', () => {
-                const newStatus = document.getElementById('updateStatus').value;
-                const obs = document.getElementById('updateObs').value;
-                const comentarioInterno = document.getElementById('updateComentarioInterno').value;
-                const equipe = document.getElementById('updateEquipe').value;
-                
-                const occurrence = ocorrencias.find(o => o.id === selectedOccurrenceId);
-                if (occurrence) {
-                    occurrence.status = newStatus;
-                    if (obs) occurrence.agenteStatus = obs;
-                    if (comentarioInterno) occurrence.comentarioInterno = comentarioInterno;
-                    if (equipe) occurrence.equipe = equipe;
-                    saveData();
-                    showToast(`Ocorrência #${selectedOccurrenceId} atualizada para ${getStatusText(newStatus)}`, 'success');
-                    
-                    const activePage = document.querySelector('.tab.active')?.getAttribute('data-page');
-                    if (activePage === 'dashboard') {
-                        renderDashboard();
-                    } else if (activePage === 'ocorrencias') {
-                        filterOcorrencias();
-                    } else if (activePage === 'mapas') {
-                        initMapaGeral();
+            showConfirmDialog('Deseja realmente atualizar esta ocorrência? O morador será notificado.', async () => {
+                const novoStatus        = document.getElementById('updateStatus').value;
+                const obs               = document.getElementById('updateObs')?.value           || '';
+                const comentarioInterno = document.getElementById('updateComentarioInterno')?.value || '';
+                const equipe            = document.getElementById('updateEquipe')?.value         || '';
+
+                const dadosAtualizacao = {
+                    status:             novoStatus,
+                    observacao_agente:  obs,
+                    comentario_interno: comentarioInterno,
+                    equipe:             equipe,
+                    id_agente:          currentUser?.id || null,
+                };
+
+                try {
+                    showLoading();
+                    const resposta = await fetch(`${API_URL}/ocorrencias/${selectedOccurrenceId}/status`, {
+                        method:  'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify(dadosAtualizacao),
+                    });
+                    const resultado = await resposta.json();
+                    if (!resposta.ok) throw new Error(resultado.erro || 'Erro ao atualizar status');
+
+                    showToast(`Ocorrência #${selectedOccurrenceId} atualizada para ${getStatusText(novoStatus)}`, 'success');
+
+                    // Atualiza localmente sem rebuscar tudo
+                    const occurrence = ocorrencias.find(o => o.id === selectedOccurrenceId);
+                    if (occurrence) {
+                        occurrence.status            = novoStatus;
+                        occurrence.agenteStatus      = obs;
+                        occurrence.comentarioInterno = comentarioInterno;
+                        occurrence.equipe            = equipe;
+                        saveData();
                     }
+
+                    const activePage = document.querySelector('.tab.active')?.getAttribute('data-page');
+                    if (activePage === 'dashboard')      renderDashboard();
+                    else if (activePage === 'ocorrencias') filterOcorrencias();
+                    else if (activePage === 'mapas')     initMapaGeral();
+
+                } catch (erro) {
+                    showToast(`Erro: ${erro.message}`, 'error');
+                    console.error('Erro ao atualizar status:', erro);
+                } finally {
+                    hideLoading();
+                    closeModal('updateOccurrenceModal');
                 }
-                closeModal('updateOccurrenceModal');
             });
         }
         
@@ -2374,9 +2447,10 @@
         // ============================================
         // INICIALIZAÇÃO
         // ============================================
-        function init() {
+        async function init() {
             if (!loadUser()) return;
-            loadSavedData();
+            loadSavedData(); // carrega localStorage como fallback enquanto a API responde
+            await carregarTodasOcorrencias(); // busca ocorrências reais do backend
             renderDashboard();
             renderMapas();
             renderOcorrencias();
