@@ -54,7 +54,26 @@ def cadastrar_ocorrencia():
         cursor.execute(sql, valores)
         id_novo = cursor.lastrowid
 
-        # TODO: quando houver upload de fotos, salvar em fotos_ocorrencia aqui
+        # Salva fotos enviadas pelo front-end, quando existirem.
+        # Neste MVP as fotos podem chegar como Base64 no campo "fotos".
+        # Em produção, o ideal é salvar os arquivos em uma pasta/storage
+        # e gravar apenas o caminho da imagem no banco.
+        fotos = dados.get("fotos", [])
+        for foto in fotos:
+            caminho_foto = foto.get("caminho_foto") if isinstance(foto, dict) else foto
+
+            if not caminho_foto:
+                continue
+
+            cursor.execute(
+                """
+                    INSERT INTO fotos_ocorrencia
+                        (id_ocorrencia, caminho_foto, data_upload)
+                    VALUES
+                        (%s, %s, %s)
+                """,
+                (id_novo, caminho_foto, datetime.now()),
+            )
 
         conn.commit()
         return jsonify({"mensagem": "Ocorrência cadastrada com sucesso", "id": id_novo}), 201
